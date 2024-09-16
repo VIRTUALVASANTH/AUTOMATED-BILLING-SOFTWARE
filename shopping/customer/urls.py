@@ -17,17 +17,24 @@ from django.urls import path
 from . import views
 from django.conf.urls.static import static
 from django.conf import settings
+from .views import process_checkout
+from django.views.generic import TemplateView
+
 
 urlpatterns = [
     path('', views.mainpage, name="loginpage"),
     path('homepage', views.dashboard, name="customerhomepage"),
     path('logout', views.logoutuser, name='logout'),
     path('scanner', views.scanner, name='scanner'),
-    path('cart', views.cart, name="cart"),
     path('addtocart', views.addtocart),
-    path('checkout',views.checkout, name="checkout"),
-
-    path('guard/login', views.loginGuard, name="guardlogin"),
+    path('payment_confirmation/', TemplateView.as_view(template_name='payment_confirmation.html'), name='payment_confirmation'),
+    path('cart/remove/<int:product_id>/', views.remove_item, name='remove_item'),
+    path('cart/', views.cart, name='cart'),
+    path('send_payment_link/', views.send_payment_link, name='send_payment_link'),
+    path('checkout/', views.checkout, name='checkout'),
+    path('process_checkout/', views.process_checkout, name='process_checkout'),
+    path('update_item/<int:product_id>/', views.update_item, name='update_item'),
+    path('guard/login', views.loginGuard, name="guardlogin"),   
     path('guard/scanner', views.scanGuard, name="guardHome"),
     path('guard/verify', views.verifyGuard, name="verifyGuard"),
     path('guard/details', views.getdetailsGuard, name="getdetailsGuard"),

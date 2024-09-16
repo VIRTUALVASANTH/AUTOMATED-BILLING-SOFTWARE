@@ -182,7 +182,6 @@ def logoutGuard(request):
     logout(request)
     return redirect('guardlogin')
 
-
 def verified(request):
     if request.method=='GET':
         orderid = request.GET.get('order')
@@ -202,3 +201,128 @@ def raiseIssue(request):
         order.save()
         del request.session['currentOrder']
     return redirect('guardHome')
+
+from django.shortcuts import render
+
+def payment_confirmation(request):
+    return render(request, 'payment_confirmation.html')
+
+
+from django.shortcuts import redirect
+from django.contrib.auth.decorators import login_required
+from.models import OrderItem, Product
+from.utils import update_cart_total
+
+@login_required
+def update_item(request, product_id):
+    product = Product.objects.get(id=product_id)
+    order_item, created = OrderItem.objects.get_or_create(product=product, user=request.user)
+    if request.method == 'POST':
+        quantity = int(request.POST.get('quantity'))
+        if quantity > 0:
+            order_item.quantity = quantity
+            order_item.save()
+            update_cart_total(request.user)
+            return redirect('cart')
+        else:
+            order_item.delete()
+            return redirect('cart')
+    return redirect('cart')
+
+
+from django.shortcuts import redirect, get_object_or_404
+from.models import OrderItem
+from.utils import remove_from_cart
+
+def remove_item(request, product_id):
+    product = get_object_or_404(Product, id=product_id)
+    remove_from_cart(request.user, product)
+    return redirect('cart')
+
+# Ensure you have imported these lines
+from .models import *
+from .forms import CheckoutForm
+
+from django.shortcuts import render, redirect
+from django.conf import settings
+from twilio.rest import Client
+from twilio.base.exceptions import TwilioRestException
+from .models import Order
+from .forms import CheckoutForm
+from django.views.decorators.csrf import csrf_exempt
+
+import json
+from django.db.models.fields import DecimalField
+from django.http.response import HttpResponse
+from django.shortcuts import redirect, render
+from django.contrib.auth.models import User
+from django.contrib.auth import login, logout, authenticate
+from django.contrib import messages
+from .models import *
+from django.http import JsonResponse
+from .utils import cartData
+
+# Other imports remain unchanged...
+
+import requests
+
+def shorten_url(url):
+    # TinyURL endpoint for creating short URLs
+    api_url = 'http://tinyurl.com/api-create.php?url=' + url
+    response = requests.get(api_url)
+    return response.text.strip()  # Strip any extra whitespace or newline characters
+
+def send_payment_link(request):
+    if request.method == 'POST':
+        phone_number = request.POST['contact']
+        total_amount = request.user.customer.order_set.filter(complete=False).first().get_cart_total
+
+        # Ensure phone number is in E.164 format
+        if not phone_number.startswith('+'):
+            phone_number = '+91' + phone_number
+
+        # UPI payment link
+        upi_link = f"upi://pay?pa=suhasjayanth4@oksbi&pn=SUHASR&am={total_amount:.2f}&cu=INR&aid=uGICAgIC19YXhHw"
+
+        # Shorten UPI link using TinyURL
+        shortened_url = shorten_url(upi_link)
+
+        # SMS message body with shortened URL
+        message_body = f"Please complete your payment. Click this link to pay: {shortened_url}"
+
+        # Twilio SMS sending
+        client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+        try:
+            message = client.messages.create(
+                body=message_body,
+                from_=settings.TWILIO_PHONE_NUMBER,
+                to=phone_number
+            )
+            return render(request, 'payment_confirmation.html')
+        except TwilioRestException as e:
+            return render(request, 'cart.html', {'error': str(e)})
+
+    return redirect('cart')
+
+
+def checkout(request):
+    customer = request.user.customer
+    order, created = Order.objects.get_or_create(customer=customer, complete=False)
+    items = order.orderitem_set.all()
+    cartItems = order.get_cart_items
+
+    form = CheckoutForm()
+
+    context = {'items': items, 'order': order, 'cartItems': cartItems, 'form': form}
+    return render(request, 'checkout.html', context)
+
+@csrf_exempt
+def process_checkout(request):
+    if request.method == 'POST':
+        form = CheckoutForm(request.POST)
+        if form.is_valid():
+            email_or_phone = form.cleaned_data['email_or_phone']
+            # Implement payment processing logic here
+            return render(request, 'payment_confirmation.html')
+
+    return redirect('checkout')
